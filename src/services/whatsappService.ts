@@ -55,8 +55,11 @@ export const sendMeetingConfirmation = async (
 
     console.log(`✅ Grupo criado com o nome: ${groupName}`);
 
+    // Obtém a saudação adequada com base no horário
+    const saudacao = getSaudacao(dataHora);
+
     // Mensagem formatada com menções reais
-    const mensagem = `Boa tarde ${clienteNome} @${clienteContato.id.user}, tudo bem?
+    const mensagem = `${saudacao}, ${clienteNome} @${clienteContato.id.user}, tudo bem?
 
 Criei este grupo para facilitar nossa comunicação e também para te apresentar ${chefeNome} @${chefeContato.id.user}, o Coordenador da próxima turma do Desafio Empreendedor em Capelinha/MG.
 
@@ -77,6 +80,15 @@ Até lá!`;
     console.error('❌ Erro ao criar grupo ou enviar mensagem:', err);
     throw err;
   }
+};
+
+// Utilitário para retornar a saudação correta
+const getSaudacao = (dataISO: string) => {
+  const data = new Date(dataISO);
+  const hora = data.getHours();
+  if (hora < 12) return 'Bom dia';
+  if (hora < 18) return 'Boa tarde';
+  return 'Boa noite';
 };
 
 // Utilitário para formatar data/hora no padrão BR
