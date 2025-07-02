@@ -1,6 +1,5 @@
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
-import { createGoogleCalendarEvent } from './calendarService'; // IMPORTAÇÃO REAL
 
 let client: Client;
 
@@ -28,7 +27,7 @@ export const sendMeetingConfirmation = async (
   chefeNome: string,
   chefeNumero: string,
   dataHora: string
-): Promise<{ success: boolean; groupId?: string; erroWhatsApp?: boolean; erroAgenda?: boolean }> => {
+): Promise<{ success: boolean; groupId?: string; erroWhatsApp?: boolean }> => {
   if (!client) throw new Error("❌ Cliente WhatsApp não foi inicializado");
 
   const clienteJid = `${clienteNumero}@c.us`;
@@ -36,14 +35,15 @@ export const sendMeetingConfirmation = async (
   const participantes = [clienteJid, chefeJid];
 
   let erroWhatsApp = false;
-  let erroAgenda = false;
   let groupId = '';
 
   try {
-    // Valida números
+    // Valida se os números têm WhatsApp
     for (const jid of participantes) {
       const isValid = await client.isRegisteredUser(jid);
-      if (!isValid) throw new Error(`⚠️ Número sem WhatsApp: ${jid}`);
+      if (!isValid) {
+        throw new Error(`⚠️ Número sem WhatsApp: ${jid}`);
+      }
     }
 
     const groupName = `Consultoria Empresarial - ${clienteNome}`;
@@ -55,14 +55,15 @@ export const sendMeetingConfirmation = async (
     if (!groupId) throw new Error("❌ Grupo não foi criado corretamente.");
     console.log(`✅ Grupo criado: ${groupName}`);
 
-    // Delay para estabilidade do grupo
-    await new Promise((r) => setTimeout(r, 3000));
+    // Aguarda o grupo estar pronto
+    await new Promise(r => setTimeout(r, 3000));
 
     // Recupera contatos
     const clienteContato = await client.getContactById(clienteJid);
     const chefeContato = await client.getContactById(chefeJid);
 
     const saudacao = getSaudacao(dataHora);
+
     const mensagem = `${saudacao}, ${clienteNome} @${clienteContato.id.user}, tudo bem?
 
 Criei este grupo para facilitar nossa comunicação e também para te apresentar ${chefeNome} @${chefeContato.id.user}, o Coordenador da próxima turma do Desafio Empreendedor em Capelinha/MG.
@@ -73,7 +74,6 @@ Ele vai participar da reunião com você ${formatarDataHora(dataHora)} para apre
 
 Até lá!`;
 
-    // Tenta enviar a mensagem com mentions (sabemos que pode falhar)
     try {
       await client.sendMessage(groupId, mensagem, {
         mentions: [clienteContato.id._serialized, chefeContato.id._serialized]
@@ -84,33 +84,22 @@ Até lá!`;
       console.warn('⚠️ Erro ao enviar mensagem no grupo:', erroMensagem);
     }
 
-    // Tenta criar evento no Google Agenda
-    try {
-      await createGoogleCalendarEvent(clienteNome, dataHora);
-      console.log('📅 Evento criado no Google Agenda');
-    } catch (erroAgendaReal) {
-      erroAgenda = true;
-      console.error('❌ Erro ao criar evento na agenda:', erroAgendaReal);
-    }
-
     return {
       success: true,
       groupId,
-      erroWhatsApp,
-      erroAgenda
+      erroWhatsApp
     };
 
   } catch (erroGeral) {
     console.error('❌ Erro fatal:', erroGeral);
     return {
       success: false,
-      erroWhatsApp: true,
-      erroAgenda: true
+      erroWhatsApp: true
     };
   }
 };
 
-// Utilitários
+// Utilitário para saudação
 const getSaudacao = (dataISO: string) => {
   const hora = new Date(dataISO).getHours();
   if (hora < 12) return 'Bom dia';
@@ -118,6 +107,7 @@ const getSaudacao = (dataISO: string) => {
   return 'Boa noite';
 };
 
+// Utilitário para formatar data/hora
 const formatarDataHora = (dataISO: string) => {
   const data = new Date(dataISO);
   return `no dia ${data.toLocaleDateString('pt-BR')} às ${data.toLocaleTimeString('pt-BR', {
