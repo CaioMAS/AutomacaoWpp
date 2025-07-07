@@ -62,7 +62,7 @@ export const sendMeetingConfirmation = async (
     const clienteContato = await client.getContactById(clienteJid);
     const chefeContato = await client.getContactById(chefeJid);
 
-    const saudacao = getSaudacao(dataHora);
+    const saudacao = getSaudacao();
 
     const mensagem = `${saudacao}, ${clienteNome} @${clienteContato.id.user}, tudo bem?
 
@@ -100,8 +100,9 @@ Até lá!`;
 };
 
 // Utilitário para saudação
-const getSaudacao = (dataISO: string) => {
-  const hora = new Date(dataISO).getHours();
+const getSaudacao = () => {
+  const agora = new Date();
+  const hora = agora.getHours();
   if (hora < 12) return 'Bom dia';
   if (hora < 18) return 'Boa tarde';
   return 'Boa noite';
