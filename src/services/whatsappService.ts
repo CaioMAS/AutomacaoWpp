@@ -46,7 +46,7 @@ export const sendMeetingConfirmation = async (
       }
     }
 
-    const groupName = `Consultoria Empresarial - ${clienteNome}`;
+    const groupName = `Desafio Empreendedor - ${clienteNome}`;
     const groupResult = await client.createGroup(groupName, participantes);
     groupId = typeof groupResult === 'string'
       ? groupResult
