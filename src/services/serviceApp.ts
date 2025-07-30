@@ -15,7 +15,7 @@ export const handleMeetingCreation = async (data: {
   await sendMeetingConfirmation(clienteNome, clienteNumero, chefeNome, chefeNumero, dataHora);
 
   // Cria evento no Google Calendar
-  await createGoogleCalendarEvent(clienteNome, dataHora);
+  //await createGoogleCalendarEvent(clienteNome, dataHora);
 
   return `✅ Reunião com ${clienteNome} agendada e mensagem enviada via WhatsApp.`;
 };

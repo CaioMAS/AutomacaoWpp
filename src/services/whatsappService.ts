@@ -27,7 +27,7 @@ export const sendMeetingConfirmation = async (
   chefeNome: string,
   chefeNumero: string,
   dataHora: string
-): Promise<{ success: boolean; groupId?: string; erroWhatsApp?: boolean }> => {
+): Promise<{ success: boolean; groupId?: string; erroWhatsApp?: boolean; message?: string }> => {
   if (!client) throw new Error("❌ Cliente WhatsApp não foi inicializado");
 
   const clienteJid = `${clienteNumero}@c.us`;
@@ -42,23 +42,43 @@ export const sendMeetingConfirmation = async (
     for (const jid of participantes) {
       const isValid = await client.isRegisteredUser(jid);
       if (!isValid) {
-        throw new Error(`⚠️ Número sem WhatsApp: ${jid}`);
+        return {
+          success: false,
+          erroWhatsApp: true,
+          message: `⚠️ Número inválido ou sem WhatsApp: ${jid}`
+        };
       }
     }
 
     const groupName = `Desafio Empreendedor - ${clienteNome}`;
-    const groupResult = await client.createGroup(groupName, participantes);
-    groupId = typeof groupResult === 'string'
-      ? groupResult
-      : groupResult?.gid?._serialized;
 
-    if (!groupId) throw new Error("❌ Grupo não foi criado corretamente.");
-    console.log(`✅ Grupo criado: ${groupName}`);
+    try {
+      const groupResult = await client.createGroup(groupName, participantes);
+      groupId = typeof groupResult === 'string'
+        ? groupResult
+        : groupResult?.gid?._serialized;
+
+      if (!groupId) {
+        return {
+          success: false,
+          erroWhatsApp: true,
+          message: "❌ Grupo não foi criado corretamente. groupId está indefinido."
+        };
+      }
+
+      console.log(`✅ Grupo criado: ${groupName}`);
+    } catch (erroCriacao) {
+      console.error("❌ Erro ao criar grupo:", erroCriacao);
+      return {
+        success: false,
+        erroWhatsApp: true,
+        message: "❌ Falha na criação do grupo via WhatsApp Web."
+      };
+    }
 
     // Aguarda o grupo estar pronto
     await new Promise(r => setTimeout(r, 3000));
 
-    // Recupera contatos
     const clienteContato = await client.getContactById(clienteJid);
     const chefeContato = await client.getContactById(chefeJid);
 
@@ -82,19 +102,27 @@ Até lá!`;
     } catch (erroMensagem) {
       erroWhatsApp = true;
       console.warn('⚠️ Erro ao enviar mensagem no grupo:', erroMensagem);
+      return {
+        success: false,
+        groupId,
+        erroWhatsApp: true,
+        message: '⚠️ Grupo criado, mas falha ao enviar mensagem.'
+      };
     }
 
     return {
       success: true,
       groupId,
-      erroWhatsApp
+      erroWhatsApp: false,
+      message: `✅ Reunião com ${clienteNome} agendada e mensagem enviada via WhatsApp.`
     };
 
   } catch (erroGeral) {
     console.error('❌ Erro fatal:', erroGeral);
     return {
       success: false,
-      erroWhatsApp: true
+      erroWhatsApp: true,
+      message: '❌ Erro inesperado ao tentar criar grupo ou enviar mensagem.'
     };
   }
 };
