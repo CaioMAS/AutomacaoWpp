@@ -1,6 +1,4 @@
-// src/services/serviceApp.ts
-import { createGoogleCalendarEvent } from './calendarService';
-import { sendMeetingConfirmation } from './whatsappService';
+import { criarGrupoReuniao } from './whatsappService';
 
 export const handleMeetingCreation = async (data: {
   clienteNome: string;
@@ -9,13 +7,10 @@ export const handleMeetingCreation = async (data: {
   chefeNome: string;
   chefeNumero: string;
 }) => {
-  const { clienteNome, clienteNumero, dataHora, chefeNome, chefeNumero } = data;
+  const { clienteNome, clienteNumero, chefeNome, chefeNumero, dataHora } = data;
 
-  // Envia mensagens pelo WhatsApp usando whatsapp-web.js
-  await sendMeetingConfirmation(clienteNome, clienteNumero, chefeNome, chefeNumero, dataHora);
+  // 🔹 Cria grupo e envia mensagem
+  await criarGrupoReuniao(clienteNome, clienteNumero, chefeNome, chefeNumero, dataHora);
 
-  // Cria evento no Google Calendar
-  //await createGoogleCalendarEvent(clienteNome, dataHora);
-
-  return `✅ Reunião com ${clienteNome} agendada e mensagem enviada via WhatsApp.`;
+  return `✅ Grupo criado e reunião confirmada com ${clienteNome} às ${dataHora}`;
 };
