@@ -36,26 +36,33 @@ const enviarMensagemGrupo = async (groupId: string, mensagem: string) => {
     apikey: API_KEY,
   };
 
-    const body = {
-    number: groupId,    
-    textMessage: {
-      text: mensagem,
-    }
+  const body = {
+    number: groupId,
+    text: mensagem
   };
+
+  console.log('📤 Enviando mensagem para grupo:', JSON.stringify(body, null, 2));
 
   try {
     const response = await axios.post(url, body, { headers });
     console.log('✅ Mensagem enviada ao grupo:', response.data);
+    return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error('❌ Erro ao enviar mensagem ao grupo:', error.response?.data || error.message);
+      console.error('❌ Erro ao enviar mensagem ao grupo:', {
+        url: error.config?.url,
+        status: error.response?.status,
+        data: error.response?.data,
+        headers: error.config?.headers,
+      });
     } else {
-      console.error('❌ Erro ao enviar mensagem ao grupo:', error);
+      console.error('❌ Erro inesperado ao enviar mensagem ao grupo:', error);
     }
+    throw error;
   }
 };
 
-// ✅ Cria grupo e envia mensagem após aguardar 2 segundos
+// ✅ Cria grupo e envia mensagem após aguardar 5 segundos
 export const criarGrupoReuniao = async (
   clienteNome: string,
   clienteNumero: string,
@@ -87,19 +94,12 @@ export const criarGrupoReuniao = async (
     console.log('🆔 Grupo criado:', groupId);
 
     if (groupId) {
-      const mensagem = `Criei este grupo para facilitar nossa comunicação e também para te apresentar ${chefeNome}, o Coordenador da próxima turma do Desafio Empreendedor em Capelinha/MG.
+      const mensagem = `ooooooooooooi`;
 
-Ele vai participar da reunião com você ${formatarDataHora(dataHora)} para apresentar todos os detalhes do trabalho.
-
-📅 Reunião Confirmada!
-
-Até lá!`;
-
-      await esperar(5000); // Aguarda 2 segundos para garantir que o grupo foi propagado no WhatsApp
-      console.log(groupId, mensagem)
+      await esperar(5000);
       await enviarMensagemGrupo(groupId, mensagem);
     } else {
-      console.error('❌ groupId não retornado.');
+      console.error('❌ groupId não retornado pela API.');
     }
 
   } catch (error: any) {
