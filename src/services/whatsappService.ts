@@ -5,17 +5,25 @@ const BASE_URL = 'https://evolutionapi.tecnologiadesafio.shop';
 const INSTANCE_ID = 'testedesafio';
 const API_KEY = process.env.EVOLUTION_API_KEY || '';
 
-// 🕓 Função para formatar data/hora
-const formatarDataHora = (dataIso: string) => {
-  const data = new Date(dataIso);
-  return data.toLocaleString('pt-BR', {
-    dateStyle: 'full',
-    timeStyle: 'short',
-  });
-};
-
 // 🕑 Função auxiliar para aguardar um tempo
 const esperar = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// 🕓 Saudação dinâmica conforme horário
+const getSaudacao = () => {
+  const hora = new Date().getHours();
+  if (hora < 12) return 'Bom dia';
+  if (hora < 18) return 'Boa tarde';
+  return 'Boa noite';
+};
+
+// 🗓️ Formata data para texto (ex: no dia 06/08/2025 às 14:00)
+const formatarDataHora = (dataISO: string) => {
+  const data = new Date(dataISO);
+  return `no dia ${data.toLocaleDateString('pt-BR')} às ${data.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+};
 
 // ✅ Verifica se a Evolution API está online
 export const startWhatsApp = async () => {
@@ -28,7 +36,7 @@ export const startWhatsApp = async () => {
 };
 
 // ✅ Envia mensagem para grupo com estrutura correta
-const enviarMensagemGrupo = async (groupId: string, mensagem: string) => {
+export const enviarMensagemGrupo = async (groupId: string, mensagem: string) => {
   const url = `${BASE_URL}/message/sendText/${INSTANCE_ID}`;
 
   const headers = {
@@ -94,7 +102,19 @@ export const criarGrupoReuniao = async (
     console.log('🆔 Grupo criado:', groupId);
 
     if (groupId) {
-      const mensagem = `ooooooooooooi`;
+      const saudacao = getSaudacao();
+      const clienteUser = clienteNumero; // sem @c.us
+      const chefeUser = chefeNumero;
+
+      const mensagem = `${saudacao}, ${clienteNome} @${clienteUser}, tudo bem?
+
+Criei este grupo para facilitar nossa comunicação e também para te apresentar ${chefeNome} @${chefeUser}, o Coordenador da próxima turma do Desafio Empreendedor em Capelinha/MG.
+
+Ele vai participar da reunião com você ${formatarDataHora(dataHora)} para apresentar todos os detalhes do trabalho.
+
+📅 Reunião Online Confirmada!
+
+Até lá!`;
 
       await esperar(5000);
       await enviarMensagemGrupo(groupId, mensagem);
