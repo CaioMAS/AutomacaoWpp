@@ -7,7 +7,7 @@ import { iniciarMonitoramentoDeLembretes } from './services/reminderScheduler';
 startWhatsApp(); // ⬅️ inicia o cliente assim que o servidor sobe
 iniciarMonitoramentoDeLembretes();
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5555;
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
