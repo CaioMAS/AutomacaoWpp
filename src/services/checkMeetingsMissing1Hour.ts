@@ -1,6 +1,7 @@
+// src/jobs/checkMeetingsMissing1Hour.ts
 import { google } from 'googleapis';
 import { JWT } from 'google-auth-library';
-import { enviarMensagemGrupo } from '../services/whatsappService';
+import { enviarMensagemContato } from '../services/whatsappService';
 import fs from 'fs';
 
 const auth = new JWT({
@@ -30,6 +31,15 @@ const marcarComoEnviado = (eventId: string) => {
   }
 };
 
+// 🔎 tenta extrair o nome do chefe da descrição (ex.: "Chefe: Daniel Antunes")
+const extrairChefe = (descricao: string) => {
+  const m = descricao.match(/(?:chefe|coordenador|consultor)\s*:\s*([^\n]+)/i);
+  return m?.[1]?.trim();
+};
+
+// 🔎 tenta extrair número (12 a 13 dígitos, com DDI+DDD) da descrição
+const extrairNumero = (descricao: string) => descricao.match(/\d{12,13}/)?.[0];
+
 export const checkMeetingsMissing1Hour = async () => {
   const agora = new Date();
   const daquiDuasHoras = new Date(agora.getTime() + 2 * 60 * 60 * 1000);
@@ -46,24 +56,37 @@ export const checkMeetingsMissing1Hour = async () => {
     const eventos = res.data.items || [];
 
     for (const evento of eventos) {
-      const inicio = new Date(evento.start?.dateTime || '');
+      const startIso = evento.start?.dateTime;
+      if (!startIso) continue; // ignora eventos sem horário (dia inteiro, etc.)
+
+      const inicio = new Date(startIso);
       const diffMin = (inicio.getTime() - agora.getTime()) / 60000;
 
-      // Verifica se falta entre 59 e 61 minutos
+      // 🎯 faltando ~1h (janela de tolerância para polling)
       if (diffMin >= 55 && diffMin <= 65) {
         const id = evento.id!;
+        if (jaEnviado(id)) continue;
+
         const descricao = evento.description || '';
-        const numero = descricao.match(/\d{12,13}/)?.[0]; // Extrai número
+        const numero = extrairNumero(descricao);
+        if (!numero) continue;
 
-        const clienteNome = evento.summary?.replace('Reunião com ', '') || 'cliente';
+        // clienteNome: tenta usar o summary, ex.: "Reunião com Vanessa"
+        const clienteNome =
+          evento.summary?.replace(/^Reuni[aã]o com\s*/i, '').trim() || 'cliente';
 
-        if (numero && !jaEnviado(id)) {
-          const mensagem = `⏰ Olá, ${clienteNome}! Só passando para lembrar que sua reunião acontecerá em 1 hora (${inicio.toLocaleTimeString('pt-BR')}). Se prepare!`;
+        const chefeNome = extrairChefe(descricao) || 'nossa equipe';
+        const horaFmt = inicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const dataFmt = inicio.toLocaleDateString('pt-BR');
 
-          await enviarMensagemGrupo(`${numero}@c.us`, mensagem); // ou enviarMensagemPrivada()
-          marcarComoEnviado(id);
-          console.log(`📤 Lembrete enviado para ${numero}`);
-        }
+        const mensagem =
+`⏰ Olá, ${clienteNome}! Passando para lembrar que sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* começa em *1 hora*.
+📅 ${dataFmt} às ${horaFmt}
+Se precisar ajustar o horário, me avise por aqui. Até já!`;
+
+        await enviarMensagemContato(numero, mensagem);
+        marcarComoEnviado(id);
+        console.log(`📤 Lembrete enviado para ${numero} (evento ${id})`);
       }
     }
   } catch (error) {
@@ -71,5 +94,5 @@ export const checkMeetingsMissing1Hour = async () => {
   }
 };
 
-// Executa diretamente
+// Executa diretamente (se desejar rodar standalone)
 checkMeetingsMissing1Hour();

@@ -1,20 +1,27 @@
-import { criarGrupoReuniao } from './whatsappService';
+// src/handlers/handleMeetingCreation.ts
+import { confirmarReuniaoWhatsApp } from './whatsappService';
 import { createGoogleCalendarEvent } from './calendarService';
 
 export const handleMeetingCreation = async (data: {
   clienteNome: string;
   clienteNumero: string;
-  dataHora: string;
-  chefeNome: string;
-  chefeNumero: string;
+  dataHora: string;         // ISO ex.: "2025-09-03T13:00:00-03:00"
+  chefeNome: string;        // apenas o nome do coordenador/chefe
+  cidadeOpcional?: string;  // opcional: "Capelinha/MG"
 }) => {
-  const { clienteNome, clienteNumero, chefeNome, chefeNumero, dataHora } = data;
+  const { clienteNome, clienteNumero, chefeNome, dataHora, cidadeOpcional } = data;
 
-  // 🔹 Cria grupo no WhatsApp e envia mensagem
-  await criarGrupoReuniao(clienteNome, clienteNumero, chefeNome, chefeNumero, dataHora);
+  // 1) Agenda no Google Calendar
+  await createGoogleCalendarEvent(clienteNome, clienteNumero, dataHora);
 
-  // 🔹 Registra a reunião no Google Calendar
- await createGoogleCalendarEvent(clienteNome, clienteNumero, dataHora);
+  // 2) Envia confirmação direta ao cliente no WhatsApp
+  await confirmarReuniaoWhatsApp({
+    clienteNome,
+    clienteNumero,
+    chefeNome,
+    dataHoraISO: dataHora,
+    cidadeOpcional,
+  });
 
-  return `✅ Grupo criado no WhatsApp e reunião agendada com ${clienteNome} às ${dataHora}`;
+  return `✅ Reunião agendada e confirmação enviada para ${clienteNome} em ${dataHora}`;
 };
