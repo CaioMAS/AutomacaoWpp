@@ -43,13 +43,17 @@ export interface GetMeetingsQuery {
 export const createGoogleCalendarEvent = async (
   clienteNome: string,
   clienteNumero: string,
-  dataHora: string
+  dataHora: string,
+  chefeNome: string,          // 🔴 obrigatório
+  cidadeOpcional?: string     // 🟡 opcional
 ): Promise<void> => {
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) throw new Error('GOOGLE_CALENDAR_ID não definido');
 
-  if (!clienteNome || !clienteNumero || !dataHora) {
-    throw new Error('Parâmetros obrigatórios ausentes: clienteNome, clienteNumero, dataHora');
+  if (!clienteNome || !clienteNumero || !dataHora || !chefeNome) {
+    throw new Error(
+      'Parâmetros obrigatórios ausentes: clienteNome, clienteNumero, dataHora, chefeNome'
+    );
   }
 
   const start = new Date(dataHora);
@@ -58,9 +62,16 @@ export const createGoogleCalendarEvent = async (
   }
   const end = new Date(start.getTime() + 30 * 60000);
 
+  const descricao = `Reunião marcada automaticamente.
+Cliente: ${clienteNome}
+Número: ${clienteNumero}
+Chefe: ${chefeNome}${
+    cidadeOpcional ? `\nCidade: ${cidadeOpcional}` : ''
+  }`;
+
   const event = {
     summary: `Reunião com ${clienteNome}`,
-    description: `Reunião marcada automaticamente.\nCliente: ${clienteNome}\nNúmero: ${clienteNumero}`,
+    description: descricao,
     start: {
       dateTime: start.toISOString(),
       timeZone: process.env.TIMEZONE || 'America/Sao_Paulo',
@@ -73,15 +84,21 @@ export const createGoogleCalendarEvent = async (
 
   try {
     await calendar.events.insert({ calendarId, requestBody: event });
-    console.log(`📅 Evento criado com sucesso no Google Calendar para ${clienteNome}.`);
+    console.log(
+      `📅 Evento criado com sucesso no Google Calendar para ${clienteNome} com ${chefeNome}.`
+    );
   } catch (error: any) {
     if (error.response?.data || error.errors) {
-      console.error('❌ Erro detalhado da API:', JSON.stringify(error.response?.data || error.errors, null, 2));
+      console.error(
+        '❌ Erro detalhado da API:',
+        JSON.stringify(error.response?.data || error.errors, null, 2)
+      );
     }
     console.error('❌ Erro interno ao criar evento:', error.message || error);
     throw new Error('Erro ao criar evento no Google Calendar. Verifique os logs.');
   }
 };
+
 
 // =========================
 // FUNÇÃO: GET MEETINGS

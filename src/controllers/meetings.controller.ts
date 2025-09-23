@@ -30,7 +30,7 @@ export const createMeeting = async (req: Request, res: Response): Promise<void> 
     }
 
     // Cria evento no Google Agenda
-    await createGoogleCalendarEvent(clienteNome, clienteNumero, dataHora);
+    await createGoogleCalendarEvent(clienteNome, clienteNumero, dataHora, chefeNome);
 
     // Envia mensagem via WhatsApp confirmando a reunião
     await confirmarReuniaoWhatsApp({

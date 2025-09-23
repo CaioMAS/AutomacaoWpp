@@ -3,13 +3,29 @@ import { JWT } from 'google-auth-library';
 import { enviarMensagemContato } from '../services/whatsappService';
 import { initDb } from '../db/registro';
 
-// 🔎 tenta extrair o nome do chefe da descrição
-const extrairChefe = (descricao: string) => {
-  const m = descricao.match(/(?:chefe|coordenador|consultor)\s*:\s*([^\n]+)/i);
-  return m?.[1]?.trim();
+// 🔎 extrai o NOME DO CLIENTE do summary: "Reunião com <nome>"
+const extrairClienteDoSummary = (summary?: string) => {
+  if (!summary) return undefined;
+  const m = summary.match(/Reuni[aã]o\s+com\s+(.+)/i);
+  if (!m) return summary.trim();
+
+  // Pega tudo depois do "com " e corta possíveis complementos após separadores
+  const bruto = m[1].trim();
+  // Se houver sufixos como " - ", " | ", " – ", " — ", pega só o primeiro trecho
+  const nome = bruto.split(/\s[-–—|]\s|[-–—|]/)[0]?.trim();
+  return nome || bruto;
 };
 
-// 🔎 tenta extrair número (12 a 13 dígitos, com DDI+DDD) da descrição
+// 🔎 extrai o NOME DO CHEFE da descrição (aceita "Chefe:", "Coordenador:", "Consultor:")
+const extrairChefe = (descricao: string) => {
+  const m = descricao.match(/(?:chefe|coordenador|consultor)\s*[:\-]\s*([^\n]+)/i);
+  if (!m) return undefined;
+  const bruto = m[1].trim();
+  const nome = bruto.split(/\s[-–—|]\s|[-–—|]/)[0]?.trim();
+  return nome || bruto;
+};
+
+// 🔎 extrai número (12 a 13 dígitos, com DDI+DDD) da descrição
 const extrairNumero = (descricao: string) => descricao.match(/\d{12,13}/)?.[0];
 
 const auth = new JWT({
@@ -27,7 +43,7 @@ export async function checkMeetingsMissing1Hour() {
   const tz = process.env.TIMEZONE || 'America/Sao_Paulo';
   const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-  // Usamos instantes UTC para cálculo (sem tocar em TZ aqui)
+  // Instantes UTC para cálculo (sem tocar em TZ)
   const now = new Date();
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999);
@@ -62,11 +78,11 @@ export async function checkMeetingsMissing1Hour() {
     const startISO = event.start?.dateTime; // ex.: "2025-09-23T19:20:00-03:00"
     if (!startISO || !event.id) continue;
 
-    // ✅ Cálculo em UTC puro (nada de reaplicar fuso aqui)
+    // ✅ Cálculo em UTC puro (sem reaplicar fuso)
     const startDate = new Date(startISO);
     const diffMin = Math.round((startDate.getTime() - Date.now()) / 60_000);
 
-    // Janela de 1h (ajuste conforme seu polling; aqui ~59–66 min)
+    // Janela ~1h (ajuste conforme o polling)
     if (diffMin >= 59 && diffMin <= 66) {
       // Evita duplicidade (ID + horário de início ISO)
       const alreadySent = await db.get(
@@ -77,8 +93,14 @@ export async function checkMeetingsMissing1Hour() {
       if (alreadySent) continue;
 
       const descricao = event.description || '';
-      const clienteNome = event.summary || 'Cliente';
+
+      // ✅ cliente certo: extrai do summary após "Reunião com"
+      const clienteNome =
+        extrairClienteDoSummary(event.summary || '') || 'Cliente';
+
+      // ✅ chefe certo: extrai de "Chefe:" na descrição
       const chefeNome = extrairChefe(descricao) || 'Responsável';
+
       const numero = extrairNumero(descricao);
       if (!numero) continue;
 
