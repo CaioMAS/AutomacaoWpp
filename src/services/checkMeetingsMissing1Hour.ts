@@ -1,37 +1,9 @@
-// src/jobs/checkMeetingsMissing1Hour.ts
 import { google } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { enviarMensagemContato } from '../services/whatsappService';
-import fs from 'fs';
+import { initDb } from '../db/registro';
 
-const auth = new JWT({
-  email: process.env.GOOGLE_CALENDAR_EMAIL,
-  key: process.env.GOOGLE_CALENDAR_PRIVATE_KEY?.split(String.raw`\n`).join('\n') || '',
-  scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
-});
-
-const calendar = google.calendar({ version: 'v3', auth });
-
-// 🔁 Evita duplicados salvando os IDs dos eventos já notificados
-const REGISTRO_PATH = './notificacoes-enviadas.json';
-
-const jaEnviado = (eventId: string): boolean => {
-  if (!fs.existsSync(REGISTRO_PATH)) return false;
-  const data = JSON.parse(fs.readFileSync(REGISTRO_PATH, 'utf-8'));
-  return data.includes(eventId);
-};
-
-const marcarComoEnviado = (eventId: string) => {
-  const data = fs.existsSync(REGISTRO_PATH)
-    ? JSON.parse(fs.readFileSync(REGISTRO_PATH, 'utf-8'))
-    : [];
-  if (!data.includes(eventId)) {
-    data.push(eventId);
-    fs.writeFileSync(REGISTRO_PATH, JSON.stringify(data, null, 2));
-  }
-};
-
-// 🔎 tenta extrair o nome do chefe da descrição (ex.: "Chefe: Daniel Antunes")
+// 🔎 tenta extrair o nome do chefe da descrição
 const extrairChefe = (descricao: string) => {
   const m = descricao.match(/(?:chefe|coordenador|consultor)\s*:\s*([^\n]+)/i);
   return m?.[1]?.trim();
@@ -40,59 +12,93 @@ const extrairChefe = (descricao: string) => {
 // 🔎 tenta extrair número (12 a 13 dígitos, com DDI+DDD) da descrição
 const extrairNumero = (descricao: string) => descricao.match(/\d{12,13}/)?.[0];
 
-export const checkMeetingsMissing1Hour = async () => {
-  const agora = new Date();
-  const daquiDuasHoras = new Date(agora.getTime() + 2 * 60 * 60 * 1000);
+const auth = new JWT({
+  email: process.env.GOOGLE_CALENDAR_EMAIL,
+  key:
+    process.env.GOOGLE_CALENDAR_PRIVATE_KEY?.split(String.raw`\n`).join('\n') ||
+    '',
+  scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+});
 
-  try {
-    const res = await calendar.events.list({
-      calendarId: process.env.GOOGLE_CALENDAR_ID!,
-      timeMin: agora.toISOString(),
-      timeMax: daquiDuasHoras.toISOString(),
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
+const calendar = google.calendar({ version: 'v3', auth });
 
-    const eventos = res.data.items || [];
+export async function checkMeetingsMissing1Hour() {
+  const db = await initDb();
+  const tz = process.env.TIMEZONE || 'America/Sao_Paulo';
+  const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-    for (const evento of eventos) {
-      const startIso = evento.start?.dateTime;
-      if (!startIso) continue; // ignora eventos sem horário (dia inteiro, etc.)
+  // Usamos instantes UTC para cálculo (sem tocar em TZ aqui)
+  const now = new Date();
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
 
-      const inicio = new Date(startIso);
-      const diffMin = (inicio.getTime() - agora.getTime()) / 60000;
+  const res = await calendar.events.list({
+    calendarId,
+    timeMin: now.toISOString(),
+    timeMax: endOfDay.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+  });
 
-      // 🎯 faltando ~1h (janela de tolerância para polling)
-      if (diffMin >= 55 && diffMin <= 65) {
-        const id = evento.id!;
-        if (jaEnviado(id)) continue;
+  const events = res.data.items || [];
 
-        const descricao = evento.description || '';
-        const numero = extrairNumero(descricao);
-        if (!numero) continue;
+  // Apenas para exibir hora local quando montar a mensagem
+  const formatHoraLocal = (iso: string) =>
+    new Intl.DateTimeFormat('pt-BR', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso));
 
-        // clienteNome: tenta usar o summary, ex.: "Reunião com Vanessa"
-        const clienteNome =
-          evento.summary?.replace(/^Reuni[aã]o com\s*/i, '').trim() || 'cliente';
+  const formatDataLocal = (iso: string) =>
+    new Intl.DateTimeFormat('pt-BR', {
+      timeZone: tz,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(new Date(iso));
 
-        const chefeNome = extrairChefe(descricao) || 'nossa equipe';
-        const horaFmt = inicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const dataFmt = inicio.toLocaleDateString('pt-BR');
+  for (const event of events) {
+    const startISO = event.start?.dateTime; // ex.: "2025-09-23T19:20:00-03:00"
+    if (!startISO || !event.id) continue;
 
-        const mensagem =
-`⏰ Olá, ${clienteNome}! Passando para lembrar que sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* começa em *1 hora*.
+    // ✅ Cálculo em UTC puro (nada de reaplicar fuso aqui)
+    const startDate = new Date(startISO);
+    const diffMin = Math.round((startDate.getTime() - Date.now()) / 60_000);
+
+    // Janela de 1h (ajuste conforme seu polling; aqui ~59–66 min)
+    if (diffMin >= 59 && diffMin <= 66) {
+      // Evita duplicidade (ID + horário de início ISO)
+      const alreadySent = await db.get(
+        'SELECT 1 FROM sent_reminders WHERE event_id = ? AND start_time = ?',
+        event.id,
+        startISO
+      );
+      if (alreadySent) continue;
+
+      const descricao = event.description || '';
+      const clienteNome = event.summary || 'Cliente';
+      const chefeNome = extrairChefe(descricao) || 'Responsável';
+      const numero = extrairNumero(descricao);
+      if (!numero) continue;
+
+      // 📅 Exibição em TZ local APENAS para o texto (sem afetar cálculo)
+      const dataFmt = formatDataLocal(startISO); // "23/09/2025"
+      const horaFmt = formatHoraLocal(startISO); // "19:20"
+
+      const mensagem = `⏰ Olá, ${clienteNome}! Passando para lembrar que sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* começa em *1 hora*.
 📅 ${dataFmt} às ${horaFmt}
 Se precisar ajustar o horário, me avise por aqui. Até já!`;
 
-        await enviarMensagemContato(numero, mensagem);
-        marcarComoEnviado(id);
-        console.log(`📤 Lembrete enviado para ${numero} (evento ${id})`);
-      }
-    }
-  } catch (error) {
-    console.error('❌ Erro ao verificar reuniões no Google Calendar:', error);
-  }
-};
+      await enviarMensagemContato(numero, mensagem);
 
-// Executa diretamente (se desejar rodar standalone)
-checkMeetingsMissing1Hour();
+      await db.run(
+        'INSERT INTO sent_reminders (event_id, start_time) VALUES (?, ?)',
+        event.id,
+        startISO
+      );
+    }
+  }
+
+  await db.close();
+}

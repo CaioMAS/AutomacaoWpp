@@ -98,28 +98,66 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
     throw new Error('Informe apenas "day" (YYYY-MM-DD) OU "start" e "end" (ISO).');
   }
 
+  // ===== Helpers de TZ robustos =====
   const isDateOnly = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
-  const toTZBoundary = (day: string, which: 'start' | 'end'): string => {
-    const base = which === 'start' ? 'T00:00:00' : 'T23:59:59.999';
-    const local = new Date(new Date(`${day}${base}`).toLocaleString('en-US', { timeZone: tz }));
-    return new Date(Date.UTC(
-      local.getFullYear(), local.getMonth(), local.getDate(),
-      local.getHours(), local.getMinutes(), local.getSeconds(), local.getMilliseconds()
-    )).toISOString();
+  const parseYMD = (s: string) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return { y, m: m - 1, d };
   };
 
+  // Pega o offset do fuso no instante informado (em minutos)
+  function tzOffsetMinutes(timeZone: string, instantUTC: Date): number {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'shortOffset',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(instantUTC);
+    const name = parts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT+0';
+    const m = name.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+    if (!m) return 0;
+    const sign = m[1] === '-' ? -1 : 1;
+    const hh = Number(m[2]);
+    const mm = m[3] ? Number(m[3]) : 0;
+    return sign * (hh * 60 + mm);
+  }
+
+  // Retorna [00:00 do dia, 00:00 do dia seguinte) em UTC, respeitando o TZ
+  function dayWindowToUTC(day: string, timeZone: string): { timeMin: string; timeMax: string } {
+    const { y, m, d } = parseYMD(day);
+    // usa meio-dia como “instante seguro” para capturar o offset do dia (evita transições raras)
+    const guess = new Date(Date.UTC(y, m, d, 12, 0, 0));
+    const off = tzOffsetMinutes(timeZone, guess); // ex.: -180 para GMT-3
+
+    const startUtcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - off * 60_000;
+    const endUtcMs   = Date.UTC(y, m, d + 1, 0, 0, 0, 0) - off * 60_000; // EXCLUSIVO
+
+    return { timeMin: new Date(startUtcMs).toISOString(), timeMax: new Date(endUtcMs).toISOString() };
+  }
+
+  function toTZBoundaryISO(input: string, which: 'start' | 'end'): string {
+    // Se vier "YYYY-MM-DD", converte para o começo/fim desse dia (exclusive) no TZ
+    if (isDateOnly(input)) {
+      if (which === 'start') return dayWindowToUTC(input, tz).timeMin;
+      // para "end" com date-only, usamos 00:00 do dia seguinte (exclusive)
+      return dayWindowToUTC(input, tz).timeMax;
+    }
+    // Se vier ISO já com offset, só normaliza para ISO UTC
+    return new Date(input).toISOString();
+  }
+
+  // ===== Define timeMin/timeMax corretos =====
   let timeMin: string;
   let timeMax: string;
 
   if (hasDay) {
-    timeMin = toTZBoundary(params.day!, 'start');
-    timeMax = toTZBoundary(params.day!, 'end');
+    const { timeMin: tmin, timeMax: tmax } = dayWindowToUTC(params.day!, tz);
+    timeMin = tmin;
+    timeMax = tmax; // exclusive
   } else {
-    const startRaw = params.start!;
-    const endRaw = params.end!;
-
-    timeMin = isDateOnly(startRaw) ? toTZBoundary(startRaw, 'start') : new Date(startRaw).toISOString();
-    timeMax = isDateOnly(endRaw) ? toTZBoundary(endRaw, 'end') : new Date(endRaw).toISOString();
+    timeMin = toTZBoundaryISO(params.start!, 'start');
+    timeMax = toTZBoundaryISO(params.end!, 'end'); // exclusivo se for date-only
   }
 
   const results: MeetingDTO[] = [];
@@ -141,10 +179,11 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
 
     for (const ev of items) {
       const startISO = ev.start?.dateTime || (ev.start?.date ? `${ev.start.date}T00:00:00.000Z` : '');
-      const endISO = ev.end?.dateTime || (ev.end?.date ? `${ev.end.date}T00:00:00.000Z` : '');
+      const endISO   = ev.end?.dateTime   || (ev.end?.date   ? `${ev.end.date}T00:00:00.000Z`   : '');
 
       let clienteNome: string | undefined;
       let clienteNumero: string | undefined;
+
       if (ev.summary) {
         const m = ev.summary.match(/Reuni[aã]o com\s+(.+)/i);
         if (m) clienteNome = m[1].trim();
@@ -176,6 +215,7 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
 
   return results;
 };
+
 
 // =========================
 // FUNÇÃO: UPDATE EVENTO

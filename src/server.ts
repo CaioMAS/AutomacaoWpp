@@ -4,8 +4,9 @@ import app from './app';
 import { startWhatsApp } from './services/whatsappService';
 import { iniciarMonitoramentoDeLembretes } from './services/reminderScheduler';
 
+
 startWhatsApp(); // ⬅️ inicia o cliente assim que o servidor sobe
-iniciarMonitoramentoDeLembretes();
+iniciarMonitoramentoDeLembretes(5);
 
 const PORT = process.env.PORT || 5555;
 

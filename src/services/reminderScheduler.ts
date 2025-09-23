@@ -1,13 +1,10 @@
 import { checkMeetingsMissing1Hour } from './checkMeetingsMissing1Hour';
 
-export const iniciarMonitoramentoDeLembretes = () => {
-  console.log('🕒 Iniciando verificação automática de reuniões a cada 5 minutos...');
-  
-  // Executa logo que a aplicação sobe
-  checkMeetingsMissing1Hour();
-
-  // Executa a cada 5 minutos (300 mil ms)
+export function iniciarMonitoramentoDeLembretes(intervaloMinutos = 5) {
+  console.log(`🔄 Monitoramento de lembretes iniciado. Intervalo: ${intervaloMinutos} min`);
   setInterval(() => {
-    checkMeetingsMissing1Hour();
-  }, 5 * 60 * 1000);
-};
+    checkMeetingsMissing1Hour().catch(err =>
+      console.error('Erro ao verificar reuniões:', err)
+    );
+  }, intervaloMinutos * 60 * 1000);
+}
