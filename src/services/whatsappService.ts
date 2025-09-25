@@ -16,13 +16,31 @@ const getSaudacao = () => {
   return 'Boa noite';
 };
 
-// 🗓️ Formata data/hora para pt-BR (ex: "no dia 06/08/2025 às 14:00")
+// 🗓️ Formata data/hora para pt-BR, fixando TZ em America/Sao_Paulo
+// Ex: "no dia 25/09/2025 às 11:30"
 const formatarDataHora = (dataISO: string) => {
-  const data = new Date(dataISO);
-  return `no dia ${data.toLocaleDateString('pt-BR')} às ${data.toLocaleTimeString('pt-BR', {
+  // se não tiver offset, força -03:00
+  const hasTZ = /[zZ]|[+\-]\d{2}:\d{2}$/.test(dataISO);
+  const normalized = hasTZ ? dataISO : `${dataISO}-03:00`;
+
+  const d = new Date(normalized);
+  if (isNaN(d.getTime())) throw new Error(`Data inválida: ${dataISO}`);
+
+  const data = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d);
+
+  const hora = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     hour: '2-digit',
     minute: '2-digit',
-  })}`;
+    hour12: false,
+  }).format(d);
+
+  return `no dia ${data} às ${hora}`;
 };
 
 // 🔢 Normaliza número para o formato aceito pela Evolution
@@ -116,9 +134,3 @@ Se precisar ajustar o horário, é só me avisar por aqui. Até lá!`;
 
   return enviarMensagemContato(clienteNumero, mensagem);
 };
-
-// ————————————————
-// 🔻 Removidos do fluxo: criação de grupo e envio para grupo
-// - enviarMensagemGrupo
-// - criarGrupoReuniao
-// ————————————————
