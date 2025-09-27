@@ -104,13 +104,16 @@ export const enviarMensagemContato = async (numeroDestino: string, mensagem: str
  * @param dataHoraISO  Data/hora ISO da reunião (ex: "2025-09-06T14:00:00-03:00")
  * @param cidadeOpcional  (opcional) cidade/observação para complementar a mensagem
  */
-export const confirmarReuniaoWhatsApp = async (params: {
+// Tipo para payload de confirmação de reunião
+export interface ConfirmarReuniaoPayload {
   clienteNome: string;
   clienteNumero: string;
   chefeNome: string;
   dataHoraISO: string;
   cidadeOpcional?: string;
-}) => {
+}
+
+export const confirmarReuniaoWhatsApp = async (params: ConfirmarReuniaoPayload) => {
   const { clienteNome, clienteNumero, chefeNome, dataHoraISO, cidadeOpcional } = params;
 
   const saudacao = getSaudacao();

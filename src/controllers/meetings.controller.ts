@@ -12,42 +12,123 @@ import { confirmarReuniaoWhatsApp } from '../services/whatsappService';
 // POST /api/meetings
 export const createMeeting = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { clienteNome, clienteNumero, dataHora, chefeNome, cidadeOpcional } = req.body as {
+    const {
+      clienteNome,
+      clienteNumero,
+      dataHora,
+      chefeNome,
+      cidadeOpcional,
+      empresaNome,
+      endereco,
+      referidoPor,
+      funcionarios,
+      faturamento,
+      observacoes,
+      instagram
+    } = req.body as {
       clienteNome?: string;
       clienteNumero?: string;
       dataHora?: string;
       chefeNome?: string;
       cidadeOpcional?: string;
+      empresaNome?: string;
+      endereco?: string;
+      referidoPor?: string;
+      funcionarios?: number;
+      faturamento?: string;
+      observacoes?: string;
+      instagram?: string;
     };
 
-    // ✅ Verifica se todos os campos obrigatórios estão presentes
-    if (!clienteNome || !clienteNumero || !dataHora || !chefeNome || !cidadeOpcional) {
+    
+
+    // ✅ campos obrigatórios corretos
+    if (!clienteNome || !clienteNumero || !dataHora || !chefeNome) {
       res.status(400).json({
         success: false,
-        error: 'Campos obrigatórios: clienteNome, clienteNumero, dataHora, chefeNome, cidadeOpcional.',
+        error: "Campos obrigatórios: clienteNome, clienteNumero, dataHora, chefeNome.",
       });
       return;
     }
 
-    // Cria evento no Google Agenda
-    await createGoogleCalendarEvent(clienteNome, clienteNumero, dataHora, chefeNome);
-
-    // Envia mensagem via WhatsApp confirmando a reunião
-    await confirmarReuniaoWhatsApp({
+    // Tenta criar o evento no Google Calendar (lança em caso de falha)
+    await createGoogleCalendarEvent(
       clienteNome,
       clienteNumero,
+      dataHora,
       chefeNome,
-      dataHoraISO: dataHora,
       cidadeOpcional,
-    });
+      empresaNome,
+      endereco,
+      referidoPor,
+      funcionarios,
+      faturamento,
+      observacoes,
+      instagram
+    );
 
+    // Envia WhatsApp (não bloqueante para confirmação — mas aguardamos para saber o resultado)
+    // Se preferir que falha no WhatsApp não impeça confirmação do evento, trate erro dentro da função confirmarReuniaoWhatsApp.
+    try {
+      await confirmarReuniaoWhatsApp({
+        clienteNome,
+        clienteNumero,
+        chefeNome,
+        dataHoraISO: dataHora,
+        cidadeOpcional,       
+        
+      });
+    } catch (waErr) {
+      // Logamos, mas não interrompemos o fluxo de confirmação do evento
+      console.warn("⚠️ Falha ao enviar WhatsApp (não impede confirmação do evento):", waErr);
+    }
+
+    // ==== READ-AFTER-WRITE: confirmar que o evento foi criado no calendário ====
+    // Buscamos pelo dia do dataHora. getMeetings aceita "day" em YYYY-MM-DD
+    const dataDate = new Date(dataHora);
+    if (isNaN(dataDate.getTime())) {
+      // caso a data enviada pelo cliente seja inválida (já deveria ter sido validada anteriormente)
+      res.status(400).json({ success: false, error: "dataHora inválida." });
+      return;
+    }
+    const dayStr = dataHora.slice(0, 10); // "YYYY-MM-DD"
+
+    // pega todas as reuniões do dia
+    const meetings = await getMeetings({ day: dayStr });
+
+    // normaliza start ISO esperado (o create usa new Date(dataHora).toISOString())
+    const expectedStartISO = new Date(dataHora).toISOString();
+
+    // tenta achar o evento criado: checa start exato ou clienteNome/numero combinando
+    const found = meetings.find(m =>
+      (m.start === expectedStartISO) ||
+      (m.clienteNumero && clienteNumero && m.clienteNumero.includes(clienteNumero.replace(/\D/g, ""))) ||
+      (m.clienteNome && clienteNome && m.clienteNome.toLowerCase() === clienteNome.toLowerCase())
+    );
+
+    if (!found) {
+      // não encontrou — informa falha de confirmação
+      console.error("⚠️ Evento não encontrado após criação. Day:", dayStr, "expectedStart:", expectedStartISO, "meetingsCount:", meetings.length);
+      res.status(200).json({
+        success: false,
+        message: "Evento criado, mas não foi possível confirmar sua presença no calendário. Verifique os logs/Google Calendar.",
+        requested: { clienteNome, clienteNumero, dataHora, chefeNome, cidadeOpcional, empresaNome, endereco, referidoPor, funcionarios, faturamento, observacoes },
+        confirmList: meetings,
+      });
+      return;
+    }
+
+    // Sucesso confirmado
     res.status(201).json({
       success: true,
-      message: 'Evento criado e WhatsApp enviado com sucesso.',
+      message: "Evento criado e confirmado no calendário. WhatsApp enviado (se aplicável).",
+      created: found,
+      confirmList: meetings,
     });
   } catch (error: any) {
-    console.error('Erro ao criar reunião:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Erro ao criar reunião:", error);
+    // Se o erro vier de validação conhecida do calendarService, repasse a mensagem
+    res.status(500).json({ success: false, error: error?.message ?? String(error) });
   }
 };
 
@@ -61,13 +142,13 @@ export const listMeetings = async (req: Request, res: Response): Promise<void> =
     };
 
     const data = await getMeetings(query);
-    const mensagem = await formatMeetingsWithGemini(data);
+    //const mensagem = await formatMeetingsWithGemini(data);
 
     res.status(200).json({
       success: true,
       count: data.length,
       data,
-      mensagem,
+      //mensagem,
     });
   } catch (error: any) {
     const mensagemErro = error?.message || 'Erro desconhecido ao listar reuniões.';

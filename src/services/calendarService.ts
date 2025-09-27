@@ -27,8 +27,19 @@ export interface MeetingDTO {
     displayName?: string;
     responseStatus?: string;
   }>;
+  // extras úteis
   clienteNome?: string;
   clienteNumero?: string;
+
+  // novos campos opcionais extraídos de extendedProperties.private
+  cidadeOpcional?: string;
+  empresaNome?: string;
+  endereco?: string;
+  referidoPor?: string;
+  funcionarios?: number;
+  faturamento?: string;
+  observacoes?: string;
+  instagram?: string;
 }
 
 export interface GetMeetingsQuery {
@@ -45,7 +56,14 @@ export const createGoogleCalendarEvent = async (
   clienteNumero: string,
   dataHora: string,
   chefeNome: string,          // 🔴 obrigatório
-  cidadeOpcional?: string     // 🟡 opcional
+  cidadeOpcional?: string,    // 🟡 opcional
+  empresaNome?: string,       // 🟡 opcional
+  endereco?: string,          // 🟡 opcional
+  referidoPor?: string,       // 🟡 opcional
+  funcionarios?: number,      // 🟡 opcional
+  faturamento?: string,       // 🟡 opcional
+  observacoes?: string,       // 🟡 opcional
+  instagram?: string          // 🟡 opcional
 ): Promise<void> => {
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) throw new Error('GOOGLE_CALENDAR_ID não definido');
@@ -62,16 +80,27 @@ export const createGoogleCalendarEvent = async (
   }
   const end = new Date(start.getTime() + 30 * 60000);
 
-  const descricao = `Reunião marcada automaticamente.
-Cliente: ${clienteNome}
-Número: ${clienteNumero}
-Chefe: ${chefeNome}${
-    cidadeOpcional ? `\nCidade: ${cidadeOpcional}` : ''
-  }`;
+  function normalizeE164DigitsOnly(phone: string): string {
+  return (phone || '').replace(/\D/g, ''); // só dígitos
+}
+
+  const numeroDigits = normalizeE164DigitsOnly(clienteNumero);
+
+  // 🔹 monta a descrição no padrão que o checkMeetingsMissingDay reconhece
+  let descricao = `chefe: ${chefeNome}\n`;
+  descricao += `telefone: ${numeroDigits}\n`;
+  if (cidadeOpcional) descricao += `cidade: ${cidadeOpcional}\n`;
+  if (empresaNome) descricao += `empresa: ${empresaNome}\n`;
+  if (endereco) descricao += `endereco: ${endereco}\n`;
+  if (referidoPor) descricao += `referidoPor: ${referidoPor}\n`;
+  if (typeof funcionarios === 'number') descricao += `funcionarios: ${funcionarios}\n`;
+  if (faturamento) descricao += `faturamento: ${faturamento}\n`;
+  if (instagram) descricao += `instagram: ${instagram}\n`;
+  if (observacoes) descricao += `obs: ${observacoes}\n`;
 
   const event = {
-    summary: `Reunião com ${clienteNome}`,
-    description: descricao,
+    summary: `Reunião com ${clienteNome}`, // 🔹 regex do checkMeetingsMissingDay usa isso
+    description: descricao.trim(),
     start: {
       dateTime: start.toISOString(),
       timeZone: process.env.TIMEZONE || 'America/Sao_Paulo',
@@ -79,6 +108,22 @@ Chefe: ${chefeNome}${
     end: {
       dateTime: end.toISOString(),
       timeZone: process.env.TIMEZONE || 'America/Sao_Paulo',
+    },
+    location: endereco || undefined, // aparece no campo "local" do Calendar
+    extendedProperties: {
+      private: {
+        clienteNome,
+        clienteNumero: numeroDigits,
+        chefeNome,
+        cidadeOpcional: cidadeOpcional || '',
+        empresaNome: empresaNome || '',
+        endereco: endereco || '',
+        referidoPor: referidoPor || '',
+        funcionarios: funcionarios?.toString() || '',
+        faturamento: faturamento || '',
+        instagram: instagram || '',
+        observacoes: observacoes || '',
+      },
     },
   };
 
@@ -122,7 +167,6 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
     return { y, m: m - 1, d };
   };
 
-  // Pega o offset do fuso no instante informado (em minutos)
   function tzOffsetMinutes(timeZone: string, instantUTC: Date): number {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone,
@@ -140,27 +184,25 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
     return sign * (hh * 60 + mm);
   }
 
-  // Retorna [00:00 do dia, 00:00 do dia seguinte) em UTC, respeitando o TZ
   function dayWindowToUTC(day: string, timeZone: string): { timeMin: string; timeMax: string } {
     const { y, m, d } = parseYMD(day);
-    // usa meio-dia como “instante seguro” para capturar o offset do dia (evita transições raras)
     const guess = new Date(Date.UTC(y, m, d, 12, 0, 0));
-    const off = tzOffsetMinutes(timeZone, guess); // ex.: -180 para GMT-3
+    const off = tzOffsetMinutes(timeZone, guess);
 
     const startUtcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - off * 60_000;
-    const endUtcMs   = Date.UTC(y, m, d + 1, 0, 0, 0, 0) - off * 60_000; // EXCLUSIVO
+    const endUtcMs   = Date.UTC(y, m, d + 1, 0, 0, 0, 0) - off * 60_000;
 
-    return { timeMin: new Date(startUtcMs).toISOString(), timeMax: new Date(endUtcMs).toISOString() };
+    return {
+      timeMin: new Date(startUtcMs).toISOString(),
+      timeMax: new Date(endUtcMs).toISOString(),
+    };
   }
 
   function toTZBoundaryISO(input: string, which: 'start' | 'end'): string {
-    // Se vier "YYYY-MM-DD", converte para o começo/fim desse dia (exclusive) no TZ
     if (isDateOnly(input)) {
       if (which === 'start') return dayWindowToUTC(input, tz).timeMin;
-      // para "end" com date-only, usamos 00:00 do dia seguinte (exclusive)
       return dayWindowToUTC(input, tz).timeMax;
     }
-    // Se vier ISO já com offset, só normaliza para ISO UTC
     return new Date(input).toISOString();
   }
 
@@ -171,10 +213,10 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
   if (hasDay) {
     const { timeMin: tmin, timeMax: tmax } = dayWindowToUTC(params.day!, tz);
     timeMin = tmin;
-    timeMax = tmax; // exclusive
+    timeMax = tmax;
   } else {
     timeMin = toTZBoundaryISO(params.start!, 'start');
-    timeMax = toTZBoundaryISO(params.end!, 'end'); // exclusivo se for date-only
+    timeMax = toTZBoundaryISO(params.end!, 'end');
   }
 
   const results: MeetingDTO[] = [];
@@ -195,17 +237,23 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
     const items = res.data.items || [];
 
     for (const ev of items) {
-      const startISO = ev.start?.dateTime || (ev.start?.date ? `${ev.start.date}T00:00:00.000Z` : '');
-      const endISO   = ev.end?.dateTime   || (ev.end?.date   ? `${ev.end.date}T00:00:00.000Z`   : '');
+      const startISO =
+        ev.start?.dateTime || (ev.start?.date ? `${ev.start.date}T00:00:00.000Z` : '');
+      const endISO =
+        ev.end?.dateTime || (ev.end?.date ? `${ev.end.date}T00:00:00.000Z` : '');
 
-      let clienteNome: string | undefined;
-      let clienteNumero: string | undefined;
+      // ===== extendedProperties.private =====
+      const priv = (ev.extendedProperties?.private ?? {}) as Record<string, string>;
 
-      if (ev.summary) {
+      let clienteNome = priv.clienteNome;
+      let clienteNumero = priv.clienteNumero;
+
+      // fallback se não houver nos priv
+      if (!clienteNome && ev.summary) {
         const m = ev.summary.match(/Reuni[aã]o com\s+(.+)/i);
         if (m) clienteNome = m[1].trim();
       }
-      if (ev.description) {
+      if (!clienteNumero && ev.description) {
         const n = ev.description.match(/(\d{10,15})/);
         if (n) clienteNumero = n[1];
       }
@@ -226,12 +274,23 @@ export const getMeetings = async (params: GetMeetingsQuery): Promise<MeetingDTO[
         })),
         clienteNome,
         clienteNumero,
+
+        // novos campos extraídos de extendedProperties.private
+        cidadeOpcional: priv.cidadeOpcional || undefined,
+        empresaNome: priv.empresaNome || undefined,
+        endereco: priv.endereco || undefined,
+        referidoPor: priv.referidoPor || undefined,
+        funcionarios: priv.funcionarios ? Number(priv.funcionarios) : undefined,
+        faturamento: priv.faturamento || undefined,
+        observacoes: priv.observacoes || undefined,
+        instagram: priv.instagram || undefined,
       });
     }
   } while (pageToken);
 
   return results;
 };
+
 
 
 // =========================
