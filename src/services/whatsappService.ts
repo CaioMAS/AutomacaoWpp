@@ -116,21 +116,14 @@ export interface ConfirmarReuniaoPayload {
 export const confirmarReuniaoWhatsApp = async (params: ConfirmarReuniaoPayload) => {
   const { clienteNome, clienteNumero, chefeNome, dataHoraISO, cidadeOpcional } = params;
 
-  const saudacao = getSaudacao();
+  //const saudacao = getSaudacao();
   const quando = formatarDataHora(dataHoraISO);
   const cidadeTxt = cidadeOpcional ? ` em ${cidadeOpcional}` : '';
 
   const mensagem =
-`${saudacao}, ${clienteNome}! Tudo bem?
+`Oi, ${clienteNome}! Tudo bem?
 
-Sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* foi *confirmada* ${quando}${cidadeTxt}.
-
-📎 Detalhes:
-• Assunto: Desafio Empreendedor
-• Participante: ${chefeNome}
-• Quando: ${quando}
-
-Se precisar ajustar o horário, é só me avisar por aqui. Até lá!`;
+Sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* foi *confirmada* ${quando}${cidadeTxt}.`;
 
   // (Opcional) pequena pausa para garantir a instância pronta
   await esperar(300);
