@@ -123,7 +123,7 @@ export const confirmarReuniaoWhatsApp = async (params: ConfirmarReuniaoPayload) 
   const mensagem =
 `Oi, ${clienteNome}! Tudo bem?
 
-Sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* foi *confirmada* ${quando}${cidadeTxt}.`;
+Sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* foi *confirmada* ${quando}.`;
 
   // (Opcional) pequena pausa para garantir a instância pronta
   await esperar(300);
