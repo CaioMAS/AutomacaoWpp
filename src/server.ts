@@ -10,7 +10,7 @@ startWhatsApp(); // ⬅️ inicia o cliente assim que o servidor sobe
 iniciarMonitoramentoDeLembretes(5);
 iniciarCheckMeetingsMissingDay8h(); 
 
-const PORT = process.env.PORT || 5555;
+const PORT = process.env.PORT ;
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
