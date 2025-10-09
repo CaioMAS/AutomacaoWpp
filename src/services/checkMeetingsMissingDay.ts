@@ -17,10 +17,11 @@ const auth = new JWT({
 const calendar = google.calendar({ version: 'v3', auth });
 
 // =========================
-// CONFIG
+/** CONFIG */
 // =========================
 const tz = process.env.TIMEZONE || 'America/Sao_Paulo';
 const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+const DAILY_KIND = 'daily-8h';
 
 // =========================
 // HELPERS DE EXTRAÇÃO
@@ -140,21 +141,22 @@ export async function checkMeetingsMissingDay(): Promise<void> {
     const mensagem =
 `📌 Oi, ${clienteNome}! Passando para lembrar que sua reunião sobre o *Desafio Empreendedor* com *${chefeNome}* está agendada para hoje às ${horaFmt}.`;
 
-    // Deduplicação específica deste envio diário (sem mudar schema):
-    const key = `${startISO}|daily08h`;
+    // Deduplicação usando schema novo (event_id + start_time + kind)
     const alreadySent = await db.get(
-      'SELECT 1 FROM sent_reminders WHERE event_id = ? AND start_time = ?',
+      'SELECT 1 FROM sent_reminders WHERE event_id = ? AND start_time = ? AND kind = ?',
       event.id,
-      key
+      startISO,
+      DAILY_KIND
     );
     if (alreadySent) continue;
 
     await enviarMensagemContato(numero, mensagem);
 
     await db.run(
-      'INSERT INTO sent_reminders (event_id, start_time) VALUES (?, ?)',
+      'INSERT INTO sent_reminders (event_id, start_time, kind) VALUES (?, ?, ?)',
       event.id,
-      key
+      startISO,
+      DAILY_KIND
     );
   }
 

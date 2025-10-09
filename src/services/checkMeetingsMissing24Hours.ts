@@ -3,20 +3,18 @@ import { JWT } from 'google-auth-library';
 import { enviarMensagemContato } from '../services/whatsappService';
 import { initDb } from '../db/registro';
 
-// 🔎 extrai o NOME DO CLIENTE do summary: "Reunião com <nome>"
+// --- IMPORTANTE ---
+// Se já possui estes helpers em outro arquivo (ex: utils/calendar.ts),
+// troque por imports e remova estas definições duplicadas.
 const extrairClienteDoSummary = (summary?: string) => {
   if (!summary) return undefined;
   const m = summary.match(/Reuni[aã]o\s+com\s+(.+)/i);
   if (!m) return summary.trim();
-
-  // Pega tudo depois do "com " e corta possíveis complementos após separadores
   const bruto = m[1].trim();
-  // Se houver sufixos como " - ", " | ", " – ", " — ", pega só o primeiro trecho
   const nome = bruto.split(/\s[-–—|]\s|[-–—|]/)[0]?.trim();
   return nome || bruto;
 };
 
-// 🔎 extrai o NOME DO CHEFE da descrição (aceita "Chefe:", "Coordenador:", "Consultor:")
 const extrairChefe = (descricao: string) => {
   const m = descricao.match(/(?:chefe|coordenador|consultor)\s*[:\-]\s*([^\n]+)/i);
   if (!m) return undefined;
@@ -25,25 +23,22 @@ const extrairChefe = (descricao: string) => {
   return nome || bruto;
 };
 
-// 🔎 extrai número (12 a 13 dígitos, com DDI+DDD) da descrição
 const extrairNumero = (descricao: string) => descricao.match(/\d{12,13}/)?.[0];
 
 const auth = new JWT({
   email: process.env.GOOGLE_CALENDAR_EMAIL,
-  key:
-    process.env.GOOGLE_CALENDAR_PRIVATE_KEY?.split(String.raw`\n`).join('\n') ||
-    '',
+  key: process.env.GOOGLE_CALENDAR_PRIVATE_KEY?.split(String.raw`\n`).join('\n') || '',
   scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
 });
 
 const calendar = google.calendar({ version: 'v3', auth });
 
-export async function checkMeetingsMissing1Hour() {
+export async function checkMeetingsMissing24Hours() {
   const db = await initDb();
   const tz = process.env.TIMEZONE || 'America/Sao_Paulo';
   const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-  // Instantes UTC para cálculo (sem tocar em TZ)
+  // janelas do dia atual (UTC)
   const now = new Date();
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999);
@@ -58,7 +53,6 @@ export async function checkMeetingsMissing1Hour() {
 
   const events = res.data.items || [];
 
-  // Apenas para exibir hora local quando montar a mensagem
   const formatHoraLocal = (iso: string) =>
     new Intl.DateTimeFormat('pt-BR', {
       timeZone: tz,
@@ -75,19 +69,16 @@ export async function checkMeetingsMissing1Hour() {
     }).format(new Date(iso));
 
   for (const event of events) {
-    const startISO = event.start?.dateTime; // ex.: "2025-09-23T19:20:00-03:00"
+    const startISO = event.start?.dateTime;
     if (!startISO || !event.id) continue;
 
-    // ✅ Cálculo em UTC puro (sem reaplicar fuso)
     const startDate = new Date(startISO);
     const diffMin = Math.round((startDate.getTime() - Date.now()) / 60_000);
 
-    // Janela ~1h (ajuste conforme o polling)
-    if (diffMin >= 59 && diffMin <= 66) {
-      // Tipo de lembrete (para evitar conflito com 24h e diário)
-      const kind = '1h';
-
-      // Evita duplicidade (ID + horário + tipo)
+    // ~24h antes (1440 min). Margem de 7 min para compensar o polling.
+    if (diffMin >= 1439 && diffMin <= 1446) {
+      // evita duplicidade POR TIPO
+      const kind = '24h';
       const alreadySent = await db.get(
         'SELECT 1 FROM sent_reminders WHERE event_id = ? AND start_time = ? AND kind = ?',
         event.id,
@@ -97,28 +88,24 @@ export async function checkMeetingsMissing1Hour() {
       if (alreadySent) continue;
 
       const descricao = event.description || '';
-
-      // ✅ cliente certo: extrai do summary após "Reunião com"
-      const clienteNome =
-        extrairClienteDoSummary(event.summary || '') || 'Cliente';
-
-      // ✅ chefe certo: extrai de "Chefe:" na descrição
+      const clienteNome = extrairClienteDoSummary(event.summary || '') || 'Cliente';
       const chefeNome = extrairChefe(descricao) || 'Responsável';
-
       const numero = extrairNumero(descricao);
       if (!numero) continue;
 
-      // 📅 Exibição em TZ local APENAS para o texto (sem afetar cálculo)
-      const dataFmt = formatDataLocal(startISO); // "23/09/2025"
-      const horaFmt = formatHoraLocal(startISO); // "19:20"
+      const dataFmt = formatDataLocal(startISO);
+      const horaFmt = formatHoraLocal(startISO);
 
-      // 💬 Mensagem 1h antes
-      const mensagem = `⏰ Oi, ${clienteNome}! Sua reunião do *Desafio Empreendedor* com o *${chefeNome}* começa daqui a 1 hora.
-📅 ${dataFmt} às ${horaFmt}`;
+      // 🔔 Mensagem 24h antes
+      const mensagem = `🔔 Lembrete de reunião (24h antes)
+
+Oi, ${clienteNome}! Passando para te lembrar da sua reunião do *Desafio Empreendedor* com o *${chefeNome}*.
+
+📅 Data: ${dataFmt}
+🕒 Horário: ${horaFmt}`;
 
       await enviarMensagemContato(numero, mensagem);
 
-      // Grava registro com tipo de lembrete
       await db.run(
         'INSERT INTO sent_reminders (event_id, start_time, kind) VALUES (?, ?, ?)',
         event.id,
