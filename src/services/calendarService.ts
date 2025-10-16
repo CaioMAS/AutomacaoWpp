@@ -80,7 +80,7 @@ export const createGoogleCalendarEvent = async (
   if (isNaN(start.getTime())) {
     throw new Error('Formato de data inválido. Use string ISO.');
   }
-  const end = new Date(start.getTime() + 30 * 60000);
+  const end = new Date(start.getTime() + 90 * 60000);
 
   function normalizeE164DigitsOnly(phone: string): string {
   return (phone || '').replace(/\D/g, ''); // só dígitos
