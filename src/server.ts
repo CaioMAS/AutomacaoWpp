@@ -9,10 +9,26 @@ import { iniciarCheckMeetingsMissingDay8h } from './services/checkMeetingsMissin
 
 import cron from 'node-cron';
 import { checkMeetingsMissing24Hours } from './services/checkMeetingsMissing24Hours';
+import enviarMensagemMotivacionalAgora from './jobs/mensagemMotivacionalDiaria';
+
 
 startWhatsApp();
 iniciarMonitoramentoDeLembretes(5);
 iniciarCheckMeetingsMissingDay8h();
+enviarMensagemMotivacionalAgora();
+
+// Agenda o envio diário às 08:00 da manhã (horário de Brasília)
+cron.schedule("0 8 * * *", async () => {
+  try {
+    console.log("⏰ Enviando mensagem motivacional diária (08:00 BRT)...");
+    await enviarMensagemMotivacionalAgora();
+    console.log("✅ Mensagem motivacional enviada com sucesso!");
+  } catch (e: any) {
+    console.error("❌ Erro ao enviar mensagem motivacional:", e?.message || e);
+  }
+}, {
+  timezone: "America/Sao_Paulo"
+});
 
 // 24h antes, a cada 15 min
 cron.schedule('*/15 * * * *', async () => {
