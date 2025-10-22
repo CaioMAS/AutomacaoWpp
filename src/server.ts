@@ -37,7 +37,7 @@ cron.schedule(
   async () => {
     await enviarReminders30mAgora({
       instancia: 'AgenteIA',            // opcional, senão usa FIXED_INSTANCIA
-      numeroDestino: '553898001014',    // opcional, senão usa FIXED_NUMERO
+      numeroDestino: '553399501851',    // opcional, senão usa FIXED_NUMERO
       tz: 'America/Sao_Paulo',
       janelaMinutos: { min: 29, max: 31 },
     });
