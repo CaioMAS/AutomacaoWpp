@@ -6,8 +6,8 @@ const DEFAULT_TZ = "America/Sao_Paulo";
 
 // ✅ FIXOS no arquivo
 const FIXED_INSTANCIA = "AgenteIA";
-const FIXED_NUMERO: E164Digits = "553898001014"; // sem @c.us
-const FIXED_NOME = "caio";
+const FIXED_NUMERO: E164Digits = "553399501851"; // sem @c.us
+const FIXED_NOME = "Ezequias";
 
 type E164Digits = string; // ex: "5531999999999"
 

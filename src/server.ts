@@ -6,6 +6,7 @@ import app from './app';
 import { startWhatsApp } from './services/whatsappService';
 import { iniciarMonitoramentoDeLembretes } from './services/reminderScheduler';
 import { iniciarCheckMeetingsMissingDay8h } from './services/checkMeetingsMissingDay';
+import { enviarReminders30mAgora } from './services/reminder30minutes'
 
 import cron from 'node-cron';
 import { checkMeetingsMissing24Hours } from './services/checkMeetingsMissing24Hours';
@@ -15,7 +16,7 @@ import enviarMensagemMotivacionalAgora from './jobs/mensagemMotivacionalDiaria';
 startWhatsApp();
 iniciarMonitoramentoDeLembretes(5);
 iniciarCheckMeetingsMissingDay8h();
-enviarMensagemMotivacionalAgora();
+//enviarMensagemMotivacionalAgora();
 
 // Agenda o envio diário às 08:00 da manhã (horário de Brasília)
 cron.schedule("0 8 * * *", async () => {
@@ -30,7 +31,21 @@ cron.schedule("0 8 * * *", async () => {
   timezone: "America/Sao_Paulo"
 });
 
-// 24h antes, a cada 15 min
+// roda a cada 5 minutos pra capturar a janela ~30m
+cron.schedule(
+  '*/5 * * * *',
+  async () => {
+    await enviarReminders30mAgora({
+      instancia: 'AgenteIA',            // opcional, senão usa FIXED_INSTANCIA
+      numeroDestino: '553898001014',    // opcional, senão usa FIXED_NUMERO
+      tz: 'America/Sao_Paulo',
+      janelaMinutos: { min: 29, max: 31 },
+    });
+  },
+  { timezone: 'America/Sao_Paulo' }
+);
+
+//24h antes, a cada 15 min
 cron.schedule('*/15 * * * *', async () => {
   try {
     console.log('⏰ Executando lembretes de 24h antes...');
