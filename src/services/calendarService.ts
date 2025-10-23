@@ -346,17 +346,78 @@ export const updateGoogleCalendarEvent = async (
 export const deleteGoogleCalendarEvent = async (id: string): Promise<void> => {
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) throw new Error('GOOGLE_CALENDAR_ID não definido');
-
   if (!id) throw new Error('Parâmetro "id" do evento é obrigatório.');
 
+  // ===== Helpers internos =====
+  // Remove telefones BR (+55 opcional, DDD opcional, 8/9 dígitos) e retorna texto sem tel + lista
+  const removerTelefones = (texto: string): { semTelefone: string; removidos: string[] } => {
+    if (!texto) return { semTelefone: '', removidos: [] };
+    const regexTel = /\b(?:\+?55[\s-]*)?(?:\(?\d{2}\)?[\s-]*)?\d{4,5}[\s-]?\d{4}\b/g;
+    const removidos: string[] = [];
+    const semTelefone = texto.replace(regexTel, (m) => {
+      removidos.push(m);
+      return '';
+    });
+    const limpo = semTelefone
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return { semTelefone: limpo, removidos };
+  };
+
+  // Envolve conteúdo com ~ ~ (estilo strikethrough do WhatsApp)
+  const riscarConteudo = (texto: string): string => {
+    const inner = (texto || '').trim() || '(sem descrição)';
+    return `~${inner}~`;
+  };
+
   try {
-    await calendar.events.delete({ calendarId, eventId: id });
-    console.log(`🗑️ Evento ${id} deletado com sucesso`);
+    // 1) Buscar evento atual
+    const getRes = await calendar.events.get({ calendarId, eventId: id });
+    const ev = getRes.data;
+    if (!ev) throw new Error('Evento não encontrado.');
+
+    const descricaoOriginal = ev.description || '';
+    const { semTelefone, removidos } = removerTelefones(descricaoOriginal);
+
+    // 2) Nova descrição: cabeçalho CANCELADO + texto riscado + nota de auditoria
+    const riscado = riscarConteudo(semTelefone);
+    const agoraBR = new Date().toLocaleString('pt-BR', {
+      timeZone: process.env.TIMEZONE || 'America/Sao_Paulo',
+    });
+
+    const cabecalhoCancelado = '**CANCELADO**\n';
+    const nota =
+      `\n\n[Atualizado via API em ${agoraBR}: ` +
+      (removidos.length ? `telefone removido (${removidos.join(', ')})` : 'sem telefone encontrado') +
+      `]`;
+
+    const novaDescricao = `${cabecalhoCancelado}${riscado}${nota}`;
+
+    // 3) Limpar telefone em extendedProperties.private (se você usa essa chave)
+    const priv = { ...(ev.extendedProperties?.private || {}) };
+    if ('phone' in priv) priv['phone'] = '';
+
+    // 4) Patch (sem deletar)
+    await calendar.events.patch({
+      calendarId,
+      eventId: id,
+      requestBody: {
+        description: novaDescricao,
+        extendedProperties: {
+          private: Object.keys(priv).length ? priv : undefined,
+          shared: ev.extendedProperties?.shared,
+        },
+      },
+    });
+
+    console.log(`📝 Evento ${id} atualizado: **CANCELADO** no topo, descrição riscada e telefone removido (soft delete).`);
   } catch (error: any) {
-    console.error('❌ Erro ao deletar evento:', error.message || error);
-    throw new Error('Erro ao deletar evento do Google Calendar.');
+    console.error('❌ Erro ao “deletar” (editar) evento:', error?.message || error);
+    throw new Error('Erro ao editar (soft delete) evento no Google Calendar.');
   }
 };
+
 
 
 export async function getMeetingsByColor(params: GetMeetingsByColorQuery): Promise<MeetingDTO[]> {

@@ -40,7 +40,7 @@ router.patch('/:id', updateMeeting);
  * @route   DELETE /api/meetings/:id
  * @desc    Remove um evento do Google Agenda
  */
-router.delete('/:id', deleteMeeting);
+router.patch('/:id/soft-delete', deleteMeeting);
 
 /**
  * @route   GET /api/meetings/red
