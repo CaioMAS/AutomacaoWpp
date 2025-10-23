@@ -6,10 +6,11 @@ const API_KEY = process.env.EVOLUTION_API_KEY || '';
 
 /**
  * 🔹 Envia mensagem via Evolution API para uma instância específica
+ * Sempre desabilitando a pré-visualização de links (linkPreview: false)
  *
- * @param instancia   ID da instância (ex: "testedesafio", "clinicaA")
+ * @param instancia       ID da instância (ex: "testedesafio", "clinicaA")
  * @param numeroDestino   Número do cliente (ex: "5531999999999" ou "5531999999999@c.us")
- * @param mensagem   Texto da mensagem a ser enviada
+ * @param mensagem        Texto da mensagem a ser enviada
  */
 export const enviarMensagemInstancia = async (
   instancia: string,
@@ -28,18 +29,20 @@ export const enviarMensagemInstancia = async (
     apikey: API_KEY,
   };
 
+  // 🚫 Força SEM preview de link
   const body = {
     number: formatarWhatsAppId(numeroDestino),
     text: mensagem,
+    linkPreview: false, // 🔴 fixo — nunca envia preview
   };
 
-  console.log(`📤 [${instancia}] Enviando mensagem:`, JSON.stringify(body, null, 2));
+  console.log(`📤 [${instancia}] Enviando mensagem (sem preview):`, JSON.stringify(body, null, 2));
 
   try {
     const response = await axios.post(url, body, { headers });
     console.log(`✅ [${instancia}] Mensagem enviada com sucesso:`, response.data);
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     if (axios.isAxiosError(error)) {
       console.error(`❌ [${instancia}] Erro ao enviar mensagem:`, {
         url: error.config?.url,
