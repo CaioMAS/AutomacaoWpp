@@ -56,6 +56,7 @@ cron.schedule('*/15 * * * *', async () => {
   }
 });
 
+
 const PORT = process.env.PORT || 5555;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
