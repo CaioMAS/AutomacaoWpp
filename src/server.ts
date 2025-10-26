@@ -19,9 +19,10 @@ iniciarCheckMeetingsMissingDay8h();
 //enviarMensagemMotivacionalAgora();
 
 // Agenda o envio diário às 08:00 da manhã (horário de Brasília)
-cron.schedule("0 8 * * *", async () => {
+// AGORA (roda de Segunda a Sexta):
+cron.schedule("0 8 * * 1-5", async () => {
   try {
-    console.log("⏰ Enviando mensagem motivacional diária (08:00 BRT)...");
+    console.log("⏰ Enviando mensagem motivacional (Seg-Sex 08:00 BRT)...");
     await enviarMensagemMotivacionalAgora();
     console.log("✅ Mensagem motivacional enviada com sucesso!");
   } catch (e: any) {
