@@ -418,100 +418,62 @@ export const deleteGoogleCalendarEvent = async (id: string): Promise<void> => {
   }
 };
 
-
-
-export async function getMeetingsByColor(params: GetMeetingsByColorQuery): Promise<MeetingDTO[]> {
+export const createGoogleCalendarTarefa = async (
+  clienteNome: string,
+  dataHora: string,
+  observacoes?: string
+): Promise<void> => {
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   if (!calendarId) throw new Error('GOOGLE_CALENDAR_ID não definido');
 
-  const tz = process.env.TIMEZONE || 'America/Sao_Paulo';
-  const hasDay = !!params.day;
-  const hasRange = !!params.start && !!params.end;
-
-  if ((hasDay && hasRange) || (!hasDay && !hasRange)) {
-    throw new Error('Informe apenas "day" (YYYY-MM-DD) OU "start" e "end" (ISO).');
+  if (!clienteNome || !dataHora) {
+    throw new Error('Parâmetros obrigatórios ausentes: clienteNome, dataHora');
   }
 
-  // precisa vir por path (/green|/red|/yellow) OU por status (sale|no-show)
-  if (!params.color && !params.status) {
-    throw new Error('Cor não informada. Use o path /green | /red | /yellow (ou status sale|no-show).');
+  const start = new Date(dataHora);
+  if (isNaN(start.getTime())) {
+    throw new Error('Formato de data inválido. Use string ISO.');
   }
 
-   // ===== Janela de tempo =====
-  let timeMin: string;
-  let timeMax: string;
-  if (hasDay) {
-    const [y, m, d] = params.day!.split('-').map(Number);
-    const start = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
-    const end = new Date(Date.UTC(y, m - 1, d, 23, 59, 59));
-    timeMin = start.toISOString();
-    timeMax = end.toISOString();
-  } else {
-    timeMin = new Date(params.start!).toISOString();
-    timeMax = new Date(params.end!).toISOString();
-  }
+  // duração padrão: 60 minutos (pode ajustar)
+  const end = new Date(start.getTime() + 60 * 60000);
 
-  // ===== Listagem (forçando retorno de colorId quando existir) =====
-  const { data } = await calendar.events.list({
-    calendarId,
-    timeMin,
-    timeMax,
-    singleEvents: true,
-    orderBy: 'startTime',
-    timeZone: tz,
-    maxResults: 2500,
-    fields:
-      'items(id,summary,description,start,end,attendees,extendedProperties,location,hangoutLink,colorId,creator,organizer)',
-  });
+  // descrição simples
+  let descricao = `tarefa: ${clienteNome}\n`;
+  if (observacoes) descricao += `obs: ${observacoes}\n`;
 
-  const items = data.items ?? [];
+  const event = {
+    summary: `Tarefa: ${clienteNome}`,
+    description: descricao.trim(),
+    start: {
+      dateTime: start.toISOString(),
+      timeZone: process.env.TIMEZONE || 'America/Sao_Paulo',
+    },
+    end: {
+      dateTime: end.toISOString(),
+      timeZone: process.env.TIMEZONE || 'America/Sao_Paulo',
+    },
+    extendedProperties: {
+      private: {
+        clienteNome,
+        observacoes: observacoes || '',
+      },
+    },
+  };
 
-  // ===== Filtro por cor/status =====
-  const targetColorIds: string[] =
-    params.status ? STATUS_TO_COLORS[params.status] : COLOR_MAP[params.color!];
-
-  const isYellowDefault = params.color === 'yellow';
-  const filtered = items.filter((ev) => {
-    const cid = ev.colorId;
-    if (isYellowDefault) {
-      // amarelo: inclui eventos SEM colorId (herdado do calendário) + amarelo explícito
-      return !cid || targetColorIds.includes(cid);
+  try {
+    await calendar.events.insert({ calendarId, requestBody: event });
+    console.log(`📌 Tarefa criada com sucesso para ${clienteNome}.`);
+  } catch (error: any) {
+    if (error.response?.data || error.errors) {
+      console.error(
+        '❌ Erro detalhado da API:',
+        JSON.stringify(error.response?.data || error.errors, null, 2)
+      );
     }
-    // verde/vermelho: precisa ter colorId explícito
-    return !!cid && targetColorIds.includes(cid);
-  });
+    console.error('❌ Erro interno ao criar tarefa:', error.message || error);
+    throw new Error('Erro ao criar tarefa no Google Calendar. Verifique os logs.');
+  }
+};
 
-  // ===== Mapper =====
-  const toIso = (dt?: { date?: string | null; dateTime?: string | null }) =>
-    dt?.dateTime ?? (dt?.date ? `${dt.date}T00:00:00.000Z` : undefined);
 
-  return filtered.map<MeetingDTO>((ev) => ({
-    id: ev.id!,
-    title: ev.summary || '(Sem título)',
-    description: ev.description || undefined,
-    start: toIso(ev.start as any)!,
-    end: toIso(ev.end as any)!,
-    timezone: ev.start?.timeZone || tz,
-    location: ev.location || undefined,
-    meetLink: ev.hangoutLink || undefined,
-    attendees: (ev.attendees || []).map((a) => ({
-      email: a.email || undefined,
-      displayName: a.displayName || undefined,
-      responseStatus: a.responseStatus || undefined,
-    })),
-    // extras úteis
-    clienteNome: (ev.extendedProperties?.private as any)?.clienteNome || undefined,
-    clienteNumero: (ev.extendedProperties?.private as any)?.clienteNumero || undefined,
-    cidadeOpcional: (ev.extendedProperties?.private as any)?.cidadeOpcional || undefined,
-    empresaNome: (ev.extendedProperties?.private as any)?.empresaNome || undefined,
-    endereco: (ev.extendedProperties?.private as any)?.endereco || undefined,
-    referidoPor: (ev.extendedProperties?.private as any)?.referidoPor || undefined,
-    funcionarios: (ev.extendedProperties?.private as any)?.funcionarios
-      ? Number((ev.extendedProperties?.private as any)?.funcionarios)
-      : undefined,
-    faturamento: (ev.extendedProperties?.private as any)?.faturamento || undefined,
-    observacoes: (ev.extendedProperties?.private as any)?.observacoes || undefined,
-    instagram: (ev.extendedProperties?.private as any)?.instagram || undefined,
-    colorId: ev.colorId || undefined,
-  }));
-}

@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
 import {
   createGoogleCalendarEvent,
+  createGoogleCalendarTarefa,
   deleteGoogleCalendarEvent,
-  getMeetings,
-  getMeetingsByColor,
+  getMeetings,  
   GetMeetingsQuery,
   updateGoogleCalendarEvent 
 } from '../services/calendarService';
@@ -226,18 +226,46 @@ export const deleteMeeting = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-
-export async function listMeetingsByColor(req: Request, res: Response) {
+export const createTarefaController = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { day, start, end } = req.query as any;
+    const {
+      clienteNome,
+      dataHora,
+      observacoes
+    } = req.body as {
+      clienteNome?: string;
+      dataHora?: string;
+      observacoes?: string;
+    };
 
-    // /api/meetings/green ou /api/meetings/red
-    const last = req.path.split('/').filter(Boolean).pop();
-    const color = (last === 'green' || last === 'red' || last === 'yellow') ? last : undefined;
+    // ---- Validação mínima ----
+    if (!clienteNome || !dataHora) {
+      res.status(400).json({
+        success: false,
+        error: "Campos obrigatórios: clienteNome e dataHora."
+      });
+      return;
+    }
 
-    const data = await getMeetingsByColor({ day, start, end, color });
-    res.json({ success: true, data });
-  } catch (e: any) {
-    res.status(400).json({ success: false, error: e?.message || "Erro" });
+    // ---- Criação da tarefa no Google Agenda ----
+    await createGoogleCalendarTarefa(clienteNome, dataHora, observacoes);
+
+    // ---- Sucesso ----
+    res.status(201).json({
+      success: true,
+      message: "Tarefa criada com sucesso no Google Calendar.",
+      data: {
+        clienteNome,
+        dataHora,
+        observacoes
+      }
+    });
+
+  } catch (error: any) {
+    console.error("❌ Erro ao criar tarefa:", error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Erro interno ao criar tarefa."
+    });
   }
-}
+};
