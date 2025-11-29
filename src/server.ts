@@ -15,11 +15,12 @@ import enviarMensagemMotivacionalAgora from './jobs/mensagemMotivacionalDiaria';
 
 startWhatsApp();
 iniciarMonitoramentoDeLembretes(5);
-iniciarCheckMeetingsMissingDay8h();
+//iniciarCheckMeetingsMissingDay8h();
 //enviarMensagemMotivacionalAgora();
 
 // Agenda o envio diário às 08:00 da manhã (horário de Brasília)
 // AGORA (roda de Segunda a Sexta):
+/*
 cron.schedule("0 8 * * 1-5", async () => {
   try {
     console.log("⏰ Enviando mensagem motivacional (Seg-Sex 08:00 BRT)...");
@@ -31,6 +32,7 @@ cron.schedule("0 8 * * 1-5", async () => {
 }, {
   timezone: "America/Sao_Paulo"
 });
+*/
 
 // // roda a cada 5 minutos pra capturar a janela ~30m
 cron.schedule(
@@ -47,15 +49,17 @@ cron.schedule(
 );
 
 // //24h antes, a cada 15 min
-cron.schedule('*/15 * * * *', async () => {
-  try {
-    console.log('⏰ Executando lembretes de 24h antes...');
-    await checkMeetingsMissing24Hours();
-    console.log('✅ Lembretes 24h processados.');
-  } catch (err) {
-    console.error('❌ Erro no 24h:', err);
-  }
-});
+// /*
+// cron.schedule('*/15 * * * *', async () => {
+//   try {
+//     console.log('⏰ Executando lembretes de 24h antes...');
+//     await checkMeetingsMissing24Hours();
+//     console.log('✅ Lembretes 24h processados.');
+//   } catch (err) {
+//     console.error('❌ Erro no 24h:', err);
+//   }
+// }); 
+// */
 
 const PORT = process.env.PORT || 5555;
 app.listen(PORT, () => {
